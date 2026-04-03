@@ -306,32 +306,3 @@ The code compares methods on:
 | SGD | `opts.lr` | 1e-3 | Learning rate |
 | SGD | `opts.epochs` | 200 | Number of epochs |
 | SGD | `opts.shuffle` | true | Data shuffling |
-
----
-
-## 9. Practical Considerations
-
-### 9.1 Lambda Selection
-
-- **Small $\lambda$**: Closer to standard linear regression, overfitting risk
-- **Large $\lambda$**: More regularization, underfitting risk
-- **Cross-validation**: Standard method for optimal $\lambda$ selection
-
-### 9.2 Method Selection
-
-- **QR**: Direct solution, numerically stable, $\mathcal{O}(nd^2)$
-- **CG**: Iterative, effective for large and sparse problems
-- **ORTOMIN**: More robust than CG for ill-conditioned matrices
-- **SGD**: Scalable for very large datasets, requires learning rate tuning
-
-### 9.3 Suggested Modifications
-
-For further experimentation:
-
-1. **Different noise types**: Uniform, Laplacian
-2. **Correlated features**: `X = randn(n,k) * randn(k,d)` with $k < d$
-3. **Cross-validation**: Implement k-fold CV for $\lambda$ selection
-4. **Comparison with Lasso**: $L_1$ regularization
-5. **Additional metrics**: Condition number, weight sparsity
-
-The code provides a solid foundation for studying different aspects of Ridge Regression and can be easily extended for more advanced explorations.
