@@ -1,94 +1,282 @@
-# Cracking Ridge Regression: From QR Methods to SGD
-This guide breaks down a MATLAB implementation of **Ridge Regression**, exploring how we can solve for weights using everything from classic matrix factorizations to iterative modern solvers.
+# Cracking Ridge Regression: QR, Conjugate Gradient, ORTOMIN, and SGD
+
+This project is a Python reimplementation of a MATLAB study on Ridge Regression.  
+The goal is to compare four different solvers for the same regularized least-squares problem:
+
+- QR decomposition
+- Conjugate Gradient (CG)
+- ORTOMIN(1)
+- Stochastic Gradient Descent (SGD)
+
+The repository does not only implement the methods, but also benchmarks them across different values of the regularization parameter $\lambda$ and different feature dimensions $d$.
 
 ---
 
-## 1. The Big Picture: What are we solving?
+## 1. Problem statement
 
-At its heart, Ridge Regression is about finding the best balance. We want to fit our data well, but we also want to keep our weights $w$ small to prevent the model from "overreacting" to noise (overfitting).
+Ridge Regression solves the following optimization problem:
 
-### The Mathematical Goal
-We minimize the combined cost of error and model complexity:
-$$\min_{w} \|Xw - y\|_2^2 + \lambda \|w\|_2^2$$
+$\min_w \|Xw-y\|_2^2 + \lambda\|w\|_2^2$
 
-The solution is elegant and stable:
-$$w^* = (X^T X + \lambda I)^{-1} X^T y$$
-The $\lambda I$ term is our "safety net"—it ensures the matrix is always invertible and keeps our predictions grounded.
+where:
 
----
+- $X \in \mathbb{R}^{n \times d}$ is the design matrix
+- $y \in \mathbb{R}^{n}$ is the target vector
+- $w \in \mathbb{R}^{d}$ is the weight vector
+- $\lambda > 0$ is the regularization strength
 
-## 2. Setting the Stage: The `project()` Function
+The corresponding linear system is:
 
-Before solving, we need a playground. The `project()` function sets up a synthetic universe where we actually know the "truth," allowing us to test how well our algorithms recover it.
+$(X^TX + \lambda I)w = X^Ty$
 
-### The Setup
-* **Dimensions:** We start with $n=200$ samples and $d=50$ features.
-* **Ground Truth:** We generate a `true_w` and create target values $y$ by adding a little Gaussian noise ($0.1$). 
-* **The Lambda Sweep:** Since we don't know the perfect $\lambda$ upfront, the code tests 20 different values across a logarithmic scale from $10^{-4}$ to $10^3$.
+When $\lambda$ increases, the solution becomes more strongly regularized: weights are shrunk more aggressively, which can improve numerical stability but also increase bias.
 
 ---
 
-## 3. Method 1: The QR Decomposition
-**The "Gold Standard" for Stability**
+## 2. Project goal
 
-Rather than calculating $(X^TX)^{-1}$ directly (which can be numerically grumpy), we use a clever trick. We stack the regularization directly into the data matrix:
+The purpose of this repository is to compare how different numerical strategies behave on the same Ridge Regression problem.
 
-$$\text{Solve for } w: \begin{bmatrix} X \\ \sqrt{\lambda}I \end{bmatrix} w \approx \begin{bmatrix} y \\ 0 \end{bmatrix}$$
+In particular, we want to evaluate:
 
-**Why QR?** By decomposing this extended matrix into $Q$ (orthogonal) and $R$ (upper triangular), we turn a complex inversion into a simple back-substitution. It’s robust, precise, and handles the $\mathcal{O}(nd^2)$ complexity like a champ.
+- **execution time**
+- **distance from the ground-truth weights**
+- **prediction error (RMSE)**
 
----
-
-## 4. Method 2: Conjugate Gradient (CG)
-**The Efficiency Specialist**
-
-CG is an iterative powerhouse. Instead of solving everything in one giant leap, it takes strategic steps. It’s specifically designed for symmetric, positive-definite systems like ours.
-
-* **The Strategy:** It searches for the solution by moving in "conjugate" directions, ensuring that each step doesn't undo the progress of the previous one.
-* **Key Controls:** You can tune the `tol` (how much error you’re willing to tolerate) and `itmax` (when to give up and stop).
+The code uses synthetic data, so the true underlying weights are known. This makes it possible to measure not only predictive quality, but also how accurately each method recovers the actual parameter vector.
 
 ---
 
-## 5. Method 3: ORTOMIN(1)
-**The Orthogonal Optimizer**
+## 3. Experimental setup
 
-Think of ORTOMIN as a cousin to CG. While CG focuses on error residuals, ORTOMIN(1) works to maintain a strict orthogonality between the current residual and the previous search direction. It’s a slightly different flavor of iteration that can be more stable in specific numerical environments.
+The main script generates synthetic Gaussian data:
+
+- number of samples: $n=500$
+- initial number of features: $d=200$
+- random seed: $1$
+- noise level: $0.1$
+
+Targets are generated as:
+
+$y = Xw_{\text{true}} + 0.1\varepsilon$
+
+with $\varepsilon \sim \mathcal{N}(0,I)$.
+
+The main sweep is performed over:
+
+$\lambda \in [10^{-4}, 10^3]$
+
+using 20 logarithmically spaced values.
+
+### Metrics
+
+For each solver, the script records:
+
+- **Time**: runtime in seconds
+- **Weight error**: $\|w - w_{\text{true}}\|_2$
+- **Prediction RMSE**: $\sqrt{\text{mean}((Xw-y)^2)}$
+
+### SGD hyperparameters
+
+The SGD baseline uses:
+
+- learning rate: $10^{-3}$
+- epochs: $200$
+- shuffle: `True`
+
+This implementation is intentionally simple and uses sample-by-sample updates.
 
 ---
 
-## 6. Method 4: Stochastic Gradient Descent (SGD)
-**The "One at a Time" Approach**
+## 4. Methods
 
-SGD is the engine behind modern Deep Learning. Unlike the other methods that look at the whole dataset (Batch), SGD looks at one single row $x_i$ at a time.
+### 4.1 QR decomposition
 
-* **The Logic:** It calculates a "mini-gradient" for one sample, takes a small step (the `learning rate`), and repeats.
-* **Shuffle for Success:** We shuffle the data every epoch to make sure the model doesn't get stuck in a repetitive loop. 
-* **The Update Rule:**
-    $$w_{t+1} = w_t - \eta [(x_i^T w - y_i)x_i + \lambda w]$$
+The QR-based solver uses the standard augmented formulation of Ridge Regression:
+
+$\tilde{X} = \begin{bmatrix} X \\ \sqrt{\lambda}I \end{bmatrix}, \quad \tilde{y} = \begin{bmatrix} y \\ 0 \end{bmatrix}$
+
+and then solves the least-squares problem through a reduced QR factorization.
+
+This is typically the most numerically stable direct approach in the repository.
+
+### 4.2 Conjugate Gradient
+
+CG solves the symmetric positive definite system:
+
+$(X^TX + \lambda I)w = X^Ty$
+
+iteratively, without explicitly inverting the matrix.
+
+It is usually attractive when the system is large and structured, and its cost depends on how quickly it converges.
+
+### 4.3 ORTOMIN(1)
+
+ORTOMIN(1) is another iterative Krylov-style method.  
+Like CG, it solves the normal equations iteratively, but uses a different update rule for the search direction.
+
+In practice, it can behave similarly to CG on some problems, but it may also be more sensitive to conditioning and stopping criteria.
+
+### 4.4 Stochastic Gradient Descent
+
+SGD updates the weights one sample at a time according to:
+
+$w_{t+1} = w_t - \eta[(x_i^Tw - y_i)x_i + \lambda w]$
+
+This is the most flexible method conceptually, but in this project it is also the most approximate one, since accuracy depends strongly on learning rate, number of epochs, and data ordering.
 
 ---
 
-## 7. How do we pick a winner?
+## 5. Main result: sweep over $\lambda$
 
-The code compares these four contenders using three main "scorecards":
+Insert this image here:
 
-1.  **Speed (Time):** How long did it take to reach the answer?
-2.  **Weight Accuracy:** How close did we get to the `true_w`?
-3.  **RMSE:** How well do our predicted $y$ values match the actual targets?
+![Sweep over lambda: time, weight error, and RMSE](imgs/Sweep_lambda_-_all_metrics.png)
 
+### Analysis
 
+This figure is the most important one in the project because it compares all four solvers on the same synthetic problem while varying $\lambda$.
+
+#### Runtime
+- **QR, CG, and ORTOMIN** are all very fast on this problem size.
+- **SGD** is dramatically slower than the other three methods across the entire range of $\lambda$.
+- The runtime of SGD is almost flat because its cost is dominated by the fixed number of epochs and per-sample Python loops, not by the value of $\lambda$.
+
+#### Weight recovery
+- **QR, CG, and ORTOMIN** almost overlap for small and moderate $\lambda$, which indicates that all three are solving the same problem correctly.
+- As $\lambda$ becomes large, the weight error increases for all three methods. This is expected: stronger regularization biases the solution away from $w_{\text{true}}$.
+- **SGD** performs much worse in this configuration. Its weight error starts increasing much earlier and reaches much larger values.
+
+#### Prediction RMSE
+- The RMSE trend matches the weight error trend.
+- For small $\lambda$, **QR, CG, and ORTOMIN** provide nearly identical predictive performance.
+- For large $\lambda$, prediction quality deteriorates because the model becomes overly regularized.
+- **SGD** again underperforms substantially, showing that with the current hyperparameters it does not converge to a competitive solution.
+
+### Main takeaway
+
+On this benchmark, **QR, CG, and ORTOMIN are all reliable solvers**, while **SGD is clearly the weakest baseline in both speed and accuracy** under the chosen settings.
 
 ---
 
-## 8. Your Tuning Knobs
+## 6. Runtime as a function of $\lambda$
 
-Want to experiment? Here are the most impactful variables you can change in the code:
+Insert this image here:
 
-| If you want to change... | Look for... | Impact |
-| :--- | :--- | :--- |
-| **Problem Complexity** | `n` and `d` | Larger numbers make the problem harder and slower. |
-| **Regularization Strength** | `lambdas` | Higher $\lambda$ prevents overfitting but might "dampen" the truth. |
-| **SGD Speed** | `opts.lr` | If the learning rate is too high, SGD "explodes"; too low, and it crawls. |
-| **Precision** | `tol` | Tightening the tolerance makes CG/ORTOMIN more accurate but slower. |
+![Execution time as a function of lambda](imgs/Time_vs_lambda_extended_range.png)
+
+### Analysis
+
+This plot extends the regularization range down to extremely small values of $\lambda$.
+
+The main observation is that:
+
+- **runtime is almost insensitive to $\lambda$** for all methods in this experiment
+- **SGD remains the slowest method by a large margin**
+- **QR, CG, and ORTOMIN** stay in the millisecond regime
+
+This is a useful result because it shows that, at least for this problem size, the computational burden is driven much more by the matrix size and solver structure than by the regularization strength itself.
+
+Small fluctuations in the curves are expected and mostly reflect implementation details, random data draws, and timing noise.
+
+---
+
+## 7. Runtime as a function of feature dimension $d$
+
+### 7.1 QR
+
+Insert this image here:
+
+![QR time vs d](imgs/Time_vs_d_-_QR.png)
+
+**Analysis.**  
+QR shows a clean and predictable growth in runtime as $d$ increases. This is consistent with the cost of dense matrix factorization, which becomes more expensive as the number of features grows.
+
+### 7.2 Conjugate Gradient
+
+Insert this image here:
+
+![CG time vs d](imgs/Time_vs_d_-_CG.png)
+
+**Analysis.**  
+CG is the fastest method in this benchmark for most tested dimensions. Its runtime grows with $d$, but it remains very small overall. The exact runtime depends not only on matrix size, but also on convergence speed, which can vary with conditioning and $\lambda$.
+
+### 7.3 ORTOMIN
+
+Insert this image here:
+
+![ORTOMIN time vs d](imgs/Time_vs_d_-_ORT.png)
+
+**Analysis.**  
+ORTOMIN is competitive at smaller dimensions, but its behavior is less regular. The visible spike around intermediate dimensions suggests that convergence is more sensitive to the specific problem instance, stopping tolerance, and iteration budget. This is one of the clearest differences between ORTOMIN and CG in the repository results.
+
+### 7.4 SGD
+
+Insert this image here:
+
+![SGD time vs d](imgs/Time_vs_d_-_SGD.png)
+
+**Analysis.**  
+SGD is consistently much slower than the other methods. The reason is structural: the implementation performs many explicit Python-level updates, one sample at a time, over 200 epochs. Even though SGD avoids matrix factorizations, this simple implementation does not exploit vectorization and therefore remains expensive.
+
+---
+
+## 8. Combined runtime comparison vs dimension
+
+Insert this image here:
+
+![Execution time vs dimension d](imgs/Time_vs_dimension_d.png)
+
+### Analysis
+
+This figure summarizes the four methods at fixed $\lambda=10^{-2}$ while varying $d$.
+
+It highlights the ranking more clearly:
+
+- **CG** is the fastest solver overall in this run
+- **QR** is slower than CG, but still efficient and very regular in its scaling
+- **ORTOMIN** is competitive, though less stable across dimensions
+- **SGD** is by far the slowest method
+
+This plot is probably the clearest one if the goal is to compare solver efficiency at increasing feature dimensionality.
+
+---
+
+## 9. Conclusions
+
+The experiments support a fairly clear interpretation:
+
+1. **QR is the most stable direct method** and provides a strong reference solution.
+2. **CG is the best overall trade-off in this benchmark**, combining very low runtime with accuracy essentially identical to QR.
+3. **ORTOMIN can match CG in accuracy**, but its runtime is more irregular.
+4. **SGD is not competitive in this setup**. With the current learning rate and number of epochs, it is both slower and less accurate than the other methods.
+
+In short, if the goal is to solve dense Ridge Regression accurately on problems of this scale, **CG and QR are the strongest choices in this repository**.
+
+---
+
+## 10. Limitations
+
+These plots are informative, but they should still be interpreted carefully.
+
+- Results are shown for a **single random seed**
+- Timing can vary due to machine load and implementation details
+- SGD is implemented in a very simple form and is not optimized
+- Iterative methods are evaluated with fixed tolerances and iteration caps, which influence convergence behavior
+
+A more rigorous comparison would average results over multiple runs and report means and standard deviations.
+
+---
+
+## 11. Possible extensions
+
+Natural next steps for this project include:
+
+- averaging benchmarks over multiple random seeds
+- tracking the number of CG and ORTOMIN iterations until convergence
+- adding mini-batch SGD or fully vectorized gradient descent
+- comparing against the closed-form solution using Cholesky
+- studying conditioning of $X^TX+\lambda I$ as $\lambda$ varies
+- testing larger-scale regimes where iterative solvers become even more relevant
 
 ---
