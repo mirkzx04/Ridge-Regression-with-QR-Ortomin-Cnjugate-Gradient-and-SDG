@@ -264,19 +264,4 @@ These plots are informative, but they should still be interpreted carefully.
 - SGD is implemented in a very simple form and is not optimized
 - Iterative methods are evaluated with fixed tolerances and iteration caps, which influence convergence behavior
 
-A more rigorous comparison would average results over multiple runs and report means and standard deviations.
-
----
-
-## 11. Possible extensions
-
-Natural next steps for this project include:
-
-- averaging benchmarks over multiple random seeds
-- tracking the number of CG and ORTOMIN iterations until convergence
-- adding mini-batch SGD or fully vectorized gradient descent
-- comparing against the closed-form solution using Cholesky
-- studying conditioning of $X^TX+\lambda I$ as $\lambda$ varies
-- testing larger-scale regimes where iterative solvers become even more relevant
-
 ---
