@@ -254,14 +254,3 @@ The experiments support a fairly clear interpretation:
 In short, if the goal is to solve dense Ridge Regression accurately on problems of this scale, **CG and QR are the strongest choices in this repository**.
 
 ---
-
-## 10. Limitations
-
-These plots are informative, but they should still be interpreted carefully.
-
-- Results are shown for a **single random seed**
-- Timing can vary due to machine load and implementation details
-- SGD is implemented in a very simple form and is not optimized
-- Iterative methods are evaluated with fixed tolerances and iteration caps, which influence convergence behavior
-
----
